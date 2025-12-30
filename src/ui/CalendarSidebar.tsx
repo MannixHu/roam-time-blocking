@@ -7,8 +7,14 @@ import { createTimeBlock, navigateToBlock } from "../core/blockCreator";
 import { getTodayPageTitle } from "../api/roamQueries";
 import { TimeGrid } from "./TimeGrid";
 
-// Day boundary: 5:00 AM - times before this are considered "previous day"
-const DAY_BOUNDARY_HOUR = 5;
+// Calculate day boundary based on dayEndHour setting
+// If dayEndHour > 24, scan next day's page for early morning blocks up to (dayEndHour - 24)
+function getDayBoundaryHour(dayEndHour: number): number {
+  if (dayEndHour > 24) {
+    return dayEndHour - 24; // e.g., 30 -> 6 AM next day
+  }
+  return 0; // Don't scan next day if dayEndHour <= 24
+}
 
 interface CalendarSidebarProps {
   extensionAPI: RoamExtensionAPI;
@@ -26,7 +32,8 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
     setIsLoading(true);
     try {
-      const blocks = scanTodayForTimeBlocks(settings.configuredTags, DAY_BOUNDARY_HOUR);
+      const dayBoundaryHour = getDayBoundaryHour(settings.dayEndHour);
+      const blocks = scanTodayForTimeBlocks(settings.configuredTags, dayBoundaryHour);
       setTimeBlocks(blocks);
       setTodayTitle(getTodayPageTitle());
     } catch (error) {
@@ -180,7 +187,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
           onBlockClick={handleBlockClick}
           onCreateBlock={handleCreateBlock}
           selectedTagColor={selectedTag?.color}
-          dayBoundaryHour={DAY_BOUNDARY_HOUR}
+          dayBoundaryHour={getDayBoundaryHour(settings.dayEndHour)}
         />
       )}
 

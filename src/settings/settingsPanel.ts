@@ -26,7 +26,7 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
       {
         id: "dayEndHour",
         name: "Day End Hour",
-        description: "Hour to end displaying in the calendar (0-23)",
+        description: "Hour to end displaying (0-30, where 24-30 = next day's 0-6 AM)",
         action: {
           type: "input",
           placeholder: "22",
@@ -66,8 +66,10 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
 }
 
 export function loadSettings(extensionAPI: RoamExtensionAPI): TimeBlockSettings {
-  const dayStartHour = Number(extensionAPI.settings.get("dayStartHour")) || DEFAULT_SETTINGS.dayStartHour;
-  const dayEndHour = Number(extensionAPI.settings.get("dayEndHour")) || DEFAULT_SETTINGS.dayEndHour;
+  const dayStartHour = Math.min(23, Math.max(0, Number(extensionAPI.settings.get("dayStartHour")) || DEFAULT_SETTINGS.dayStartHour));
+  const rawDayEndHour = Number(extensionAPI.settings.get("dayEndHour")) || DEFAULT_SETTINGS.dayEndHour;
+  // Support hours up to 30 (6 AM next day)
+  const dayEndHour = Math.min(30, Math.max(0, rawDayEndHour));
   const defaultColor = (extensionAPI.settings.get("defaultColor") as string) || DEFAULT_SETTINGS.defaultColor;
 
   // Parse tags
