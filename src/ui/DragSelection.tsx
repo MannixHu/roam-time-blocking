@@ -18,7 +18,7 @@ export const DragSelection: React.FC<DragSelectionProps> = ({ selection, color }
 
   return (
     <div
-      className="timeblock-drag-selection"
+      className="tb-absolute tb-left-1 tb-right-1 tb-border-2 tb-border-dashed tb-rounded tb-pointer-events-none tb-z-10 tb-flex tb-items-center tb-justify-center"
       style={{
         top: `${selection.top}px`,
         height: `${Math.max(selection.height, 15)}px`,
@@ -26,7 +26,10 @@ export const DragSelection: React.FC<DragSelectionProps> = ({ selection, color }
         borderColor: borderColor,
       }}
     >
-      <span className="timeblock-drag-time" style={{ color: borderColor }}>
+      <span
+        className="tb-text-[10px] tb-font-semibold tb-bg-white/90 tb-px-1.5 tb-py-0.5 tb-rounded-sm"
+        style={{ color: borderColor }}
+      >
         {selection.startTime} - {selection.endTime}
       </span>
     </div>

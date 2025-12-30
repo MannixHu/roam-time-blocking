@@ -6,13 +6,10 @@ function escapeRegex(str: string): string {
 }
 
 function createTagMatcher(config: TagConfig): RegExp {
-  if (config.isPageRef) {
-    // Match [[Tag]] or #[[Tag]]
-    return new RegExp(`(\\[\\[${escapeRegex(config.tag)}\\]\\]|#\\[\\[${escapeRegex(config.tag)}\\]\\])`);
-  } else {
-    // Match #tag (not followed by word characters, to avoid partial matches)
-    return new RegExp(`#${escapeRegex(config.tag)}(?![\\w-])`);
-  }
+  // Match both #tag and [[tag]] formats (case-insensitive)
+  const escaped = escapeRegex(config.tag);
+  // Match: #tag, #[[tag]], or [[tag]]
+  return new RegExp(`(#${escaped}(?![\\w-])|#\\[\\[${escaped}\\]\\]|\\[\\[${escaped}\\]\\])`, "i");
 }
 
 export function findAssociatedTag(blockUid: string, configuredTags: TagConfig[]): TagConfig | null {

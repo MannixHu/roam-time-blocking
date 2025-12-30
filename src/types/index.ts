@@ -1,3 +1,5 @@
+import type React from "react";
+
 // Time block data types
 export interface ParsedTimeRange {
   startHour: number;
@@ -27,6 +29,7 @@ export interface TimeBlockSettings {
   dayEndHour: number;
   configuredTags: TagConfig[];
   defaultColor: string;
+  hourHeight: number; // pixels per hour (default 60)
 }
 
 // Roam API types
@@ -57,9 +60,10 @@ export interface SettingItem {
   name: string;
   description: string;
   action: {
-    type: "input" | "select" | "switch";
+    type: "input" | "select" | "switch" | "reactComponent";
     placeholder?: string;
     options?: { id: string; label: string }[];
+    component?: React.FC;
   };
 }
 

@@ -7,6 +7,8 @@ interface TimeBlockProps {
   startHour: number;
   pixelsPerHour: number;
   onClick: () => void;
+  column?: number;
+  totalColumns?: number;
 }
 
 function darkenColor(hex: string, percent: number): string {
@@ -19,7 +21,14 @@ function darkenColor(hex: string, percent: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-export const TimeBlock: React.FC<TimeBlockProps> = ({ data, startHour, pixelsPerHour, onClick }) => {
+export const TimeBlock: React.FC<TimeBlockProps> = ({
+  data,
+  startHour,
+  pixelsPerHour,
+  onClick,
+  column = 0,
+  totalColumns = 1,
+}) => {
   const { timeRange, tag, text } = data;
 
   // Calculate position and height
@@ -29,6 +38,10 @@ export const TimeBlock: React.FC<TimeBlockProps> = ({ data, startHour, pixelsPer
 
   const top = ((startMinutes - startHour * 60) / 60) * pixelsPerHour;
   const height = Math.max((durationMinutes / 60) * pixelsPerHour, 20); // Minimum 20px height
+
+  // Calculate width and left position for overlapping blocks
+  const widthPercent = 100 / totalColumns;
+  const leftPercent = column * widthPercent;
 
   // Get color from tag or default
   const backgroundColor = tag?.color || "#cccccc";
@@ -42,19 +55,24 @@ export const TimeBlock: React.FC<TimeBlockProps> = ({ data, startHour, pixelsPer
 
   return (
     <div
-      className="timeblock-block"
+      data-timeblock
+      className="tb-absolute tb-rounded tb-px-1 tb-py-0.5 tb-cursor-pointer tb-overflow-hidden tb-z-[1] tb-box-border hover:tb-shadow-lg hover:tb-translate-x-0.5 hover:tb-z-[2] tb-transition-shadow"
       style={{
         top: `${top}px`,
         height: `${height}px`,
+        left: `calc(${leftPercent}% + 2px)`,
+        width: `calc(${widthPercent}% - 4px)`,
         backgroundColor,
-        borderLeft: `4px solid ${borderColor}`,
+        borderLeft: `3px solid ${borderColor}`,
       }}
       onClick={onClick}
       title={text}
     >
-      <div className="timeblock-block-time">{timeDisplay}</div>
+      <div className="tb-text-[9px] tb-font-semibold tb-opacity-90 tb-text-black/70">{timeDisplay}</div>
       {height > 30 && (
-        <div className="timeblock-block-text">{displayText || (tag?.tag ? `#${tag.tag}` : "")}</div>
+        <div className="tb-text-[10px] tb-whitespace-nowrap tb-overflow-hidden tb-text-ellipsis tb-text-black/80 tb-mt-px">
+          {displayText || (tag?.tag ? `#${tag.tag}` : "")}
+        </div>
       )}
     </div>
   );

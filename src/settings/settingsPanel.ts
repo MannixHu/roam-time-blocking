@@ -1,4 +1,5 @@
 import type { RoamExtensionAPI, TimeBlockSettings, TagConfig } from "../types";
+import { createTagConfigEditorComponent } from "./TagConfigEditor";
 
 export const DEFAULT_SETTINGS: TimeBlockSettings = {
   dayStartHour: 6,
@@ -8,9 +9,13 @@ export const DEFAULT_SETTINGS: TimeBlockSettings = {
     { tag: "shortTerm", color: "#7CB342", isPageRef: false },
   ],
   defaultColor: "#9E9E9E",
+  hourHeight: 48, // pixels per hour (smaller = more hours visible)
 };
 
 export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
+  // Create the tag config editor component with extensionAPI access
+  const TagConfigEditorComponent = createTagConfigEditorComponent(extensionAPI);
+
   extensionAPI.settings.panel.create({
     tabTitle: "TimeBlock",
     settings: [
@@ -33,23 +38,12 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
         },
       },
       {
-        id: "timeBlockTags",
-        name: "Time Block Tags",
-        description:
-          "Tags that trigger time block parsing. Format: tag1, tag2, [[PageRef]]. Comma-separated.",
+        id: "tagConfigs",
+        name: "Tag Configuration",
+        description: "Configure tags and their colors for time block tracking",
         action: {
-          type: "input",
-          placeholder: "longTerm, shortTerm, [[Meeting]]",
-        },
-      },
-      {
-        id: "tagColors",
-        name: "Tag Colors",
-        description:
-          "Color for each tag. Format: tag:#color, tag2:#color2. Comma-separated.",
-        action: {
-          type: "input",
-          placeholder: "longTerm:#4A90D9, shortTerm:#7CB342, Meeting:#F4511E",
+          type: "reactComponent",
+          component: TagConfigEditorComponent,
         },
       },
       {
@@ -59,6 +53,15 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
         action: {
           type: "input",
           placeholder: "#9E9E9E",
+        },
+      },
+      {
+        id: "hourHeight",
+        name: "Hour Height (pixels)",
+        description: "Height in pixels for each hour (20-100). Smaller = more hours visible",
+        action: {
+          type: "input",
+          placeholder: "48",
         },
       },
     ],
@@ -71,21 +74,45 @@ export function loadSettings(extensionAPI: RoamExtensionAPI): TimeBlockSettings 
   // Support hours up to 30 (6 AM next day)
   const dayEndHour = Math.min(30, Math.max(0, rawDayEndHour));
   const defaultColor = (extensionAPI.settings.get("defaultColor") as string) || DEFAULT_SETTINGS.defaultColor;
+  // Hour height: 20-100 pixels, default 48
+  const rawHourHeight = Number(extensionAPI.settings.get("hourHeight")) || DEFAULT_SETTINGS.hourHeight;
+  const hourHeight = Math.min(100, Math.max(20, rawHourHeight));
 
-  // Parse tags
-  const tagsStr = (extensionAPI.settings.get("timeBlockTags") as string) || "";
-  const colorsStr = (extensionAPI.settings.get("tagColors") as string) || "";
+  // Try to load tags from new JSON format first
+  let configuredTags: TagConfig[] = [];
+  const tagConfigsJson = extensionAPI.settings.get("tagConfigs") as string;
 
-  const configuredTags = parseTagsAndColors(tagsStr, colorsStr, defaultColor);
+  if (tagConfigsJson) {
+    try {
+      configuredTags = JSON.parse(tagConfigsJson) as TagConfig[];
+    } catch (e) {
+      console.error("[TimeBlock] Failed to parse tagConfigs:", e);
+    }
+  }
+
+  // Fallback to old string format for backward compatibility
+  if (configuredTags.length === 0) {
+    const tagsStr = (extensionAPI.settings.get("timeBlockTags") as string) || "";
+    const colorsStr = (extensionAPI.settings.get("tagColors") as string) || "";
+    configuredTags = parseTagsAndColors(tagsStr, colorsStr, defaultColor);
+
+    // Migrate to new format if old format exists
+    if (configuredTags.length > 0) {
+      extensionAPI.settings.set("tagConfigs", JSON.stringify(configuredTags));
+      console.log("[TimeBlock] Migrated tags to new format");
+    }
+  }
 
   return {
     dayStartHour,
     dayEndHour,
     configuredTags: configuredTags.length > 0 ? configuredTags : DEFAULT_SETTINGS.configuredTags,
     defaultColor,
+    hourHeight,
   };
 }
 
+// Keep for backward compatibility migration
 function parseTagsAndColors(tagsStr: string, colorsStr: string, defaultColor: string): TagConfig[] {
   if (!tagsStr.trim()) return [];
 

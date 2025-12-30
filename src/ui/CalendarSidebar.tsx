@@ -133,19 +133,23 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
   if (!settings) {
     return (
-      <div className="timeblock-sidebar">
-        <div className="timeblock-loading">Loading settings...</div>
+      <div className="tb-flex tb-flex-col tb-flex-1 tb-min-h-0 tb-w-full tb-font-sans tb-text-xs tb-bg-[var(--background-color,#fff)]">
+        <div className="tb-flex tb-items-center tb-justify-center tb-flex-1 tb-text-[var(--text-secondary,#666)]">
+          Loading settings...
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="timeblock-sidebar">
+    <div className="tb-flex tb-flex-col tb-flex-1 tb-min-h-0 tb-w-full tb-font-sans tb-text-xs tb-bg-[var(--background-color,#fff)]">
       {/* Header */}
-      <div className="timeblock-header">
-        <div className="timeblock-title">{todayTitle || "Today"}</div>
+      <div className="tb-flex tb-justify-between tb-items-center tb-px-3 tb-py-2 tb-border-b tb-border-[var(--border-color,#e0e0e0)] tb-shrink-0">
+        <div className="tb-font-semibold tb-text-[13px] tb-text-[var(--text-color,#333)]">
+          {todayTitle || "Today"}
+        </div>
         <button
-          className="timeblock-refresh-btn"
+          className="tb-bg-transparent tb-border-none tb-cursor-pointer tb-p-1 tb-rounded tb-text-[var(--text-secondary,#666)] tb-flex tb-items-center tb-justify-center hover:tb-bg-[var(--hover-bg,#f0f0f0)] disabled:tb-opacity-50 disabled:tb-cursor-not-allowed"
           onClick={refreshTimeBlocks}
           title="Refresh"
           disabled={isLoading}
@@ -158,7 +162,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
       {/* Tag Selector */}
       {settings.configuredTags.length > 0 && (
-        <div className="timeblock-tag-selector">
+        <div className="tb-flex tb-flex-wrap tb-gap-1.5 tb-px-3 tb-py-2 tb-border-b tb-border-[var(--border-color,#e0e0e0)] tb-shrink-0">
           {settings.configuredTags.map((tag) => (
             <button
               key={tag.tag}
@@ -178,7 +182,9 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
       {/* Content */}
       {isLoading ? (
-        <div className="timeblock-loading">Loading...</div>
+        <div className="tb-flex tb-items-center tb-justify-center tb-flex-1 tb-text-[var(--text-secondary,#666)]">
+          Loading...
+        </div>
       ) : (
         <TimeGrid
           startHour={settings.dayStartHour}
@@ -188,11 +194,12 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
           onCreateBlock={handleCreateBlock}
           selectedTagColor={selectedTag?.color}
           dayBoundaryHour={getDayBoundaryHour(settings.dayEndHour)}
+          pixelsPerHour={settings.hourHeight}
         />
       )}
 
       {/* Footer with block count */}
-      <div className="timeblock-footer">
+      <div className="tb-px-3 tb-py-1.5 tb-border-t tb-border-[var(--border-color,#e0e0e0)] tb-text-[10px] tb-text-[var(--text-secondary,#888)] tb-text-center tb-shrink-0">
         {timeBlocks.length} time block{timeBlocks.length !== 1 ? "s" : ""}
       </div>
     </div>
@@ -210,40 +217,33 @@ export function renderSidebar(extensionAPI: RoamExtensionAPI): void {
     container.id = "timeblock-sidebar-container";
   }
 
-  // Find the right sidebar and insert after the header (X and collapse buttons)
-  const rightSidebar = document.getElementById("right-sidebar");
+  // Find the sidebar-content inside right sidebar
+  const sidebarContent = document.querySelector("#roam-right-sidebar-content .sidebar-content");
 
-  if (rightSidebar && !container.parentNode) {
-    // Look for the sidebar header (contains close/collapse buttons)
-    const sidebarHeader = rightSidebar.querySelector(".rm-sidebar-header, [class*='sidebar-header'], .flex-h-box");
-
-    if (sidebarHeader && sidebarHeader.nextSibling) {
-      // Insert after the header
-      sidebarHeader.parentNode?.insertBefore(container, sidebarHeader.nextSibling);
-      console.log("[TimeBlock] Inserted after sidebar header");
-    } else {
-      // Fallback: insert at the beginning of sidebar content
-      const firstChild = rightSidebar.firstElementChild;
-      if (firstChild) {
-        rightSidebar.insertBefore(container, firstChild.nextSibling || firstChild);
-      } else {
-        rightSidebar.appendChild(container);
-      }
-      console.log("[TimeBlock] Inserted into right-sidebar");
+  if (sidebarContent && !container.parentNode) {
+    // Insert at the top of sidebar-content
+    sidebarContent.prepend(container);
+    console.log("[TimeBlock] Inserted into .sidebar-content");
+  } else if (!sidebarContent) {
+    // Fallback: try to find right-sidebar and prepend there
+    const rightSidebar = document.getElementById("right-sidebar");
+    if (rightSidebar && !container.parentNode) {
+      rightSidebar.prepend(container);
+      console.log("[TimeBlock] Fallback: prepended to right-sidebar");
+    } else if (!rightSidebar) {
+      console.error("[TimeBlock] Could not find sidebar elements");
+      // Last resort: floating panel
+      document.body.appendChild(container);
+      container.style.position = "fixed";
+      container.style.right = "20px";
+      container.style.top = "50px";
+      container.style.width = "300px";
+      container.style.zIndex = "9999";
+      container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+      container.style.borderRadius = "8px";
+      container.style.overflow = "hidden";
+      console.log("[TimeBlock] Using floating panel fallback");
     }
-  } else if (!rightSidebar) {
-    console.error("[TimeBlock] Could not find #right-sidebar");
-    // Fallback: floating panel
-    document.body.appendChild(container);
-    container.style.position = "fixed";
-    container.style.right = "20px";
-    container.style.top = "50px";
-    container.style.width = "300px";
-    container.style.zIndex = "9999";
-    container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-    container.style.borderRadius = "8px";
-    container.style.overflow = "hidden";
-    console.log("[TimeBlock] Using floating panel fallback");
   }
 
   // Render React component

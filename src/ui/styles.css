@@ -1,227 +1,44 @@
-/* TimeBlock Sidebar Styles */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Container inside .sidebar-content */
 #timeblock-sidebar-container {
-  width: 100%;
+  @apply tb-w-full tb-flex tb-flex-col tb-min-h-[500px] tb-max-h-[70vh] tb-overflow-hidden tb-mb-2;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.timeblock-sidebar {
-  display: flex;
-  flex-direction: column;
-  height: 450px;
-  max-height: 60vh;
-  width: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 12px;
-  background: var(--background-color, #fff);
-}
-
-/* Header */
-.timeblock-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
-}
-
-.timeblock-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text-color, #333);
-}
-
-.timeblock-refresh-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: var(--text-secondary, #666);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.timeblock-refresh-btn:hover {
-  background: var(--hover-bg, #f0f0f0);
-}
-
-.timeblock-refresh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Tag Selector */
-.timeblock-tag-selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  flex-shrink: 0;
-}
-
+/* Tag button - needs complex hover animation */
 .timeblock-tag-btn {
-  padding: 4px 10px;
-  border: 2px solid;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
+  @apply tb-px-2.5 tb-py-1 tb-border-2 tb-rounded-xl tb-text-xs tb-font-medium tb-cursor-pointer tb-bg-transparent;
   transition: all 0.15s ease;
-  background: transparent;
 }
 
 .timeblock-tag-btn:hover {
-  opacity: 0.85;
+  @apply tb-opacity-85;
   transform: scale(1.02);
 }
 
 .timeblock-tag-btn.selected {
-  font-weight: 600;
+  @apply tb-font-semibold;
 }
 
-/* Loading */
-.timeblock-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  color: var(--text-secondary, #666);
+/* Color picker input - browser-specific styling */
+.timeblock-color-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
 }
 
-/* Grid */
-.timeblock-grid {
-  flex: 1;
-  display: flex;
-  overflow-y: auto;
-  position: relative;
-  user-select: none;
-  cursor: crosshair;
+.timeblock-color-input::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
 }
 
-.timeblock-hour-labels {
-  width: 45px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border-color, #e0e0e0);
-  background: var(--background-color, #fff);
-}
-
-.timeblock-hour-label {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding-right: 6px;
-  padding-top: 2px;
-  font-size: 10px;
-  color: var(--text-secondary, #888);
-}
-
-.timeblock-blocks-container {
-  flex: 1;
-  position: relative;
-  min-height: 100%;
-}
-
-.timeblock-hour-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: var(--border-color, #e0e0e0);
-  pointer-events: none;
-}
-
-.timeblock-half-hour-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: var(--border-light, #f0f0f0);
-  pointer-events: none;
-}
-
-/* Time Block */
-.timeblock-block {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  border-radius: 4px;
-  padding: 2px 6px;
-  cursor: pointer;
-  overflow: hidden;
-  transition: box-shadow 0.15s ease, transform 0.1s ease;
-  z-index: 1;
-}
-
-.timeblock-block:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transform: translateX(2px);
-  z-index: 2;
-}
-
-.timeblock-block-time {
-  font-size: 9px;
-  font-weight: 600;
-  opacity: 0.9;
-  color: rgba(0, 0, 0, 0.7);
-}
-
-.timeblock-block-text {
-  font-size: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: rgba(0, 0, 0, 0.8);
-  margin-top: 1px;
-}
-
-/* Drag Selection */
-.timeblock-drag-selection {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  background-color: rgba(66, 133, 244, 0.25);
-  border: 2px dashed #4285f4;
-  border-radius: 4px;
-  pointer-events: none;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.timeblock-drag-time {
-  font-size: 10px;
-  font-weight: 600;
-  color: #4285f4;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-/* Footer */
-.timeblock-footer {
-  padding: 6px 12px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  font-size: 10px;
-  color: var(--text-secondary, #888);
-  text-align: center;
-  flex-shrink: 0;
-}
-
-/* Dark mode support (Roam's CSS variables) */
-.rm-dark-theme .timeblock-sidebar {
+/* Dark mode support - uses Roam's theme class */
+.rm-dark-theme .tb-bg-\[var\(--background-color\2c \#fff\)\] {
   background: var(--background-color, #1a1a1a);
 }
 
-.rm-dark-theme .timeblock-title {
-  color: var(--text-color, #e0e0e0);
-}
-
-.rm-dark-theme .timeblock-block-time,
-.rm-dark-theme .timeblock-block-text {
+.rm-dark-theme .tb-text-black\/70,
+.rm-dark-theme .tb-text-black\/80 {
   color: rgba(255, 255, 255, 0.85);
 }
