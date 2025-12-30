@@ -1,5 +1,7 @@
 node_modules
 build
+extension.js
+extension.js.LICENSE.txt
 CLAUDE.md
 .DS_Store
 .claude
