@@ -1,19 +1,29 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import type { RoamExtensionAPI, TimeBlockData, TimeBlockSettings, TagConfig } from "../types";
+import type { RoamExtensionAPI, TimeBlockData, TimeBlockSettings, ColorConfig, TagConfig } from "../types";
+import { colorConfigsToTagConfigs } from "../types";
 import { loadSettings } from "../settings/settingsPanel";
 import { scanTodayForTimeBlocks } from "../core/blockScanner";
-import { createTimeBlock, navigateToBlock } from "../core/blockCreator";
+import { createTimeBlock, updateBlockTag, removeBlockTag, removeBlockTimeAndTag, updateBlockTime } from "../core/blockCreator";
 import { getTodayPageTitle } from "../api/roamQueries";
 import { TimeGrid } from "./TimeGrid";
 
-// Calculate day boundary based on dayEndHour setting
-// If dayEndHour > 24, scan next day's page for early morning blocks up to (dayEndHour - 24)
 function getDayBoundaryHour(dayEndHour: number): number {
   if (dayEndHour > 24) {
-    return dayEndHour - 24; // e.g., 30 -> 6 AM next day
+    return dayEndHour - 24;
   }
-  return 0; // Don't scan next day if dayEndHour <= 24
+  return 0;
+}
+
+// Check if a color is light (for text contrast)
+function isLightColor(hex: string): boolean {
+  const color = hex.replace("#", "");
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  // Using relative luminance formula
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5;
 }
 
 interface CalendarSidebarProps {
@@ -25,15 +35,73 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
   const [settings, setSettings] = useState<TimeBlockSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [todayTitle, setTodayTitle] = useState("");
-  const [selectedTag, setSelectedTag] = useState<TagConfig | null>(null);
+  const [selectedBlockUids, setSelectedBlockUids] = useState<Set<string>>(new Set());
+  const [selectedTagIndex, setSelectedTagIndex] = useState<number>(0); // Remember selected tag for new blocks
+
+  // Track last focused block before user interacts with sidebar
+  const lastFocusedBlockRef = useRef<string | null>(null);
+  const lastCaptureTimeRef = useRef<number>(0);
+
+  // Refs for performance - avoid re-creating callbacks
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  // Capture focused block - extract UID from DOM active element (more reliable)
+  const captureFocusedBlock = useCallback((force = false) => {
+    // Throttle captures to avoid performance issues (except when forced)
+    const now = Date.now();
+    if (!force && now - lastCaptureTimeRef.current < 100) return;
+    lastCaptureTimeRef.current = now;
+
+    // Method 1: Try Roam API first
+    const focused = window.roamAlphaAPI.ui.getFocusedBlock();
+    if (focused?.["block-uid"]) {
+      lastFocusedBlockRef.current = focused["block-uid"];
+      return;
+    }
+
+    // Method 2: Fallback to DOM active element (Roam textarea has UID in id attribute)
+    const activeEl = document.activeElement;
+    if (activeEl?.id && activeEl.id.startsWith("block-input-")) {
+      // Roam textarea ID format: block-input-{windowId}-{blockUid} (UID is last 9 chars)
+      const blockUid = activeEl.id.substring(activeEl.id.length - 9);
+      if (blockUid.length === 9) {
+        lastFocusedBlockRef.current = blockUid;
+      }
+    }
+
+    // Method 3: Find any focused textarea in Roam content
+    if (!lastFocusedBlockRef.current) {
+      const focusedTextarea = document.querySelector(".roam-body-main textarea:focus, #right-sidebar textarea:focus") as HTMLTextAreaElement;
+      if (focusedTextarea?.id?.startsWith("block-input-")) {
+        const blockUid = focusedTextarea.id.substring(focusedTextarea.id.length - 9);
+        if (blockUid.length === 9) {
+          lastFocusedBlockRef.current = blockUid;
+        }
+      }
+    }
+  }, []);
+
+  // Capture on mouseenter - force capture to ensure we get the focused block
+  const handleMouseEnter = useCallback(() => {
+    captureFocusedBlock(true); // Force capture on enter
+  }, [captureFocusedBlock]);
+
+  // Also capture on mousemove - always try to capture fresh value
+  // This ensures we get the latest focused block even if user switches blocks
+  const handleMouseMove = useCallback(() => {
+    captureFocusedBlock();
+  }, [captureFocusedBlock]);
 
   const refreshTimeBlocks = useCallback(() => {
-    if (!settings) return;
+    const currentSettings = settingsRef.current;
+    if (!currentSettings) return;
 
     setIsLoading(true);
     try {
-      const dayBoundaryHour = getDayBoundaryHour(settings.dayEndHour);
-      const blocks = scanTodayForTimeBlocks(settings.configuredTags, dayBoundaryHour);
+      const dayBoundaryHour = getDayBoundaryHour(currentSettings.dayEndHour);
+      const tagConfigs = colorConfigsToTagConfigs(currentSettings.colorConfigs);
+      const blocks = scanTodayForTimeBlocks(tagConfigs, dayBoundaryHour);
       setTimeBlocks(blocks);
       setTodayTitle(getTodayPageTitle());
     } catch (error) {
@@ -41,16 +109,28 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [settings]);
+  }, []);
+
+  // Global focus listener to track last focused Roam block
+  useEffect(() => {
+    const handleGlobalFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.id?.startsWith("block-input-")) {
+        const blockUid = target.id.substring(target.id.length - 9);
+        if (blockUid.length === 9) {
+          lastFocusedBlockRef.current = blockUid;
+        }
+      }
+    };
+
+    document.addEventListener("focusin", handleGlobalFocusIn);
+    return () => document.removeEventListener("focusin", handleGlobalFocusIn);
+  }, []);
 
   // Load settings on mount
   useEffect(() => {
     const loadedSettings = loadSettings(extensionAPI);
     setSettings(loadedSettings);
-    // Set default selected tag
-    if (loadedSettings.configuredTags.length > 0) {
-      setSelectedTag(loadedSettings.configuredTags[0]);
-    }
   }, [extensionAPI]);
 
   // Refresh blocks when settings change
@@ -60,13 +140,13 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
     }
   }, [settings, refreshTimeBlocks]);
 
-  // Set up periodic refresh
+  // Set up periodic refresh (longer interval for performance)
   useEffect(() => {
-    const interval = setInterval(refreshTimeBlocks, 30000);
+    const interval = setInterval(refreshTimeBlocks, 60000);
     return () => clearInterval(interval);
   }, [refreshTimeBlocks]);
 
-  // Watch for changes using Roam's native API
+  // Watch for changes - optimized with longer debounce
   useEffect(() => {
     if (!settings) return;
 
@@ -74,29 +154,17 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
     const debouncedRefresh = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        console.log("[TimeBlock] Data changed, refreshing...");
-        refreshTimeBlocks();
-      }, 300);
+      debounceTimer = setTimeout(refreshTimeBlocks, 500);
     };
 
-    // Use Roam's addPullWatch to monitor today's page for changes
     const todayTitle = getTodayPageTitle();
-    const pullPattern = `[:block/string :block/uid {:block/children ...}]`;
+    const pullPattern = `[:block/string :block/uid]`;
     const lookupRef = `[:node/title "${todayTitle}"]`;
 
-    const watchCallback = (_before: unknown, _after: unknown) => {
-      debouncedRefresh();
-    };
-
-    // Add pull watch for today's page
     let watchId: number | null = null;
     try {
       if (window.roamAlphaAPI.data?.addPullWatch) {
-        watchId = window.roamAlphaAPI.data.addPullWatch(pullPattern, lookupRef, watchCallback);
-        console.log("[TimeBlock] Pull watch added for:", todayTitle);
-      } else {
-        console.log("[TimeBlock] addPullWatch not available, using fallback");
+        watchId = window.roamAlphaAPI.data.addPullWatch(pullPattern, lookupRef, debouncedRefresh);
       }
     } catch (e) {
       console.warn("[TimeBlock] Could not add pull watch:", e);
@@ -107,78 +175,242 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
       if (watchId !== null && window.roamAlphaAPI.data?.removePullWatch) {
         try {
           window.roamAlphaAPI.data.removePullWatch(watchId);
-          console.log("[TimeBlock] Pull watch removed");
         } catch (e) {
-          console.warn("[TimeBlock] Could not remove pull watch:", e);
+          // Ignore
         }
       }
     };
   }, [settings, refreshTimeBlocks]);
 
-  const handleBlockClick = useCallback((uid: string) => {
-    navigateToBlock(uid);
-  }, []);
+  // Handle clicking on a time block - only for selection
+  const handleBlockClick = useCallback(
+    (uid: string, event: React.MouseEvent) => {
+      const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
+
+      if (isMultiSelect) {
+        // Multi-select mode: toggle selection
+        setSelectedBlockUids((prev) => {
+          const newSet = new Set(prev);
+          if (newSet.has(uid)) {
+            newSet.delete(uid);
+          } else {
+            newSet.add(uid);
+          }
+          return newSet;
+        });
+      } else {
+        // Single click mode: toggle selection
+        if (selectedBlockUids.has(uid) && selectedBlockUids.size === 1) {
+          // Click on already selected block - deselect it
+          setSelectedBlockUids(new Set());
+        } else {
+          // Select this block only
+          setSelectedBlockUids(new Set([uid]));
+        }
+      }
+    },
+    [selectedBlockUids]
+  );
+
+  // Handle clicking on a tag button - select tag and optionally apply to selected blocks
+  const handleTagClick = useCallback(
+    async (config: ColorConfig, index: number) => {
+      const currentSettings = settingsRef.current;
+      if (!currentSettings) return;
+
+      // Always remember the selected tag for new blocks
+      setSelectedTagIndex(index);
+
+      // If blocks are selected, apply the tag to them
+      if (selectedBlockUids.size > 0 && config.tags.length > 0) {
+        const tagConfigs = colorConfigsToTagConfigs(currentSettings.colorConfigs);
+        const tagConfig: TagConfig = { tag: config.tags[0], color: config.color, isPageRef: false };
+
+        for (const uid of selectedBlockUids) {
+          try {
+            await updateBlockTag(uid, tagConfig, tagConfigs);
+          } catch (error) {
+            console.error("[TimeBlock] Error updating block tag:", error);
+          }
+        }
+        setSelectedBlockUids(new Set());
+        // Small delay to let Roam commit the changes
+        setTimeout(refreshTimeBlocks, 100);
+      }
+    },
+    [selectedBlockUids, refreshTimeBlocks]
+  );
+
+  // Handle removing tags AND time from selected blocks (Remove button)
+  const handleRemoveTag = useCallback(async () => {
+    const currentSettings = settingsRef.current;
+    if (!currentSettings || selectedBlockUids.size === 0) return;
+
+    const tagConfigs = colorConfigsToTagConfigs(currentSettings.colorConfigs);
+
+    for (const uid of selectedBlockUids) {
+      try {
+        await removeBlockTimeAndTag(uid, tagConfigs);
+      } catch (error) {
+        console.error("[TimeBlock] Error removing block tag:", error);
+      }
+    }
+    setSelectedBlockUids(new Set());
+    // Small delay to let Roam commit the changes
+    setTimeout(refreshTimeBlocks, 100);
+  }, [selectedBlockUids, refreshTimeBlocks]);
+
+  // Handle right-click to remove tag
+  const handleBlockContextMenu = useCallback(
+    async (uid: string, event: React.MouseEvent) => {
+      event.preventDefault();
+      const currentSettings = settingsRef.current;
+      if (!currentSettings) return;
+
+      const uidsToUpdate = selectedBlockUids.has(uid) ? Array.from(selectedBlockUids) : [uid];
+      const tagConfigs = colorConfigsToTagConfigs(currentSettings.colorConfigs);
+
+      for (const blockUid of uidsToUpdate) {
+        try {
+          await removeBlockTag(blockUid, tagConfigs);
+        } catch (error) {
+          console.error("[TimeBlock] Error removing block tag:", error);
+        }
+      }
+
+      setSelectedBlockUids(new Set());
+      // Small delay to let Roam commit the changes
+      setTimeout(refreshTimeBlocks, 100);
+    },
+    [selectedBlockUids, refreshTimeBlocks]
+  );
+
+  // Handle dragging time block to change time
+  const handleBlockDrag = useCallback(
+    async (uid: string, newStartHour: number, newStartMinute: number, newEndHour: number, newEndMinute: number) => {
+      try {
+        await updateBlockTime(uid, newStartHour, newStartMinute, newEndHour, newEndMinute);
+        // Small delay to let Roam commit the changes
+        setTimeout(refreshTimeBlocks, 100);
+      } catch (error) {
+        console.error("[TimeBlock] Error updating block time:", error);
+      }
+    },
+    [refreshTimeBlocks]
+  );
 
   const handleCreateBlock = useCallback(
     async (startHour: number, startMinute: number, endHour: number, endMinute: number) => {
       try {
-        await createTimeBlock(startHour, startMinute, endHour, endMinute, undefined, selectedTag?.tag);
-        refreshTimeBlocks();
+        const currentSettings = settingsRef.current;
+        // Get the selected tag from colorConfigs
+        const tagsWithConfig = currentSettings?.colorConfigs.filter((c) => c.tags.length > 0) || [];
+        const selectedConfig = tagsWithConfig[selectedTagIndex];
+        const tag = selectedConfig?.tags[0];
+
+        await createTimeBlock(startHour, startMinute, endHour, endMinute, lastFocusedBlockRef.current || undefined, tag);
+        // Don't clear ref - keep it so multiple blocks can be created at same location
+        // The global focus listener will update it when user clicks elsewhere in Roam
+        // Small delay to let Roam commit the changes
+        setTimeout(refreshTimeBlocks, 100);
       } catch (error) {
         console.error("[TimeBlock] Error creating time block:", error);
       }
     },
-    [selectedTag, refreshTimeBlocks]
+    [selectedTagIndex, refreshTimeBlocks]
   );
+
+  // Clear selection when clicking outside
+  const handleGridClick = useCallback(() => {
+    // Don't clear if clicking on a block (handled by handleBlockClick)
+  }, []);
 
   if (!settings) {
     return (
       <div className="tb-flex tb-flex-col tb-flex-1 tb-min-h-0 tb-w-full tb-font-sans tb-text-xs tb-bg-[var(--background-color,#fff)]">
         <div className="tb-flex tb-items-center tb-justify-center tb-flex-1 tb-text-[var(--text-secondary,#666)]">
-          Loading settings...
+          Loading...
         </div>
       </div>
     );
   }
 
   return (
-    <div className="tb-flex tb-flex-col tb-flex-1 tb-min-h-0 tb-w-full tb-font-sans tb-text-xs tb-bg-[var(--background-color,#fff)]">
+    <div
+      className="tb-flex tb-flex-col tb-flex-1 tb-min-h-0 tb-w-full tb-font-sans tb-text-xs tb-bg-[var(--background-color,#fff)]"
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+    >
       {/* Header */}
       <div className="tb-flex tb-justify-between tb-items-center tb-px-3 tb-py-2 tb-border-b tb-border-[var(--border-color,#e0e0e0)] tb-shrink-0">
-        <div className="tb-font-semibold tb-text-[13px] tb-text-[var(--text-color,#333)]">
-          {todayTitle || "Today"}
+        <div className="tb-flex tb-items-center tb-gap-2">
+          <span className="tb-font-semibold tb-text-[13px] tb-text-[var(--text-color,#333)]">
+            {todayTitle || "Today"}
+          </span>
+          {/* Delete button - shown prominently when blocks selected */}
+          {selectedBlockUids.size > 0 && (
+            <button
+              className="tb-px-2 tb-py-0.5 tb-rounded tb-text-[11px] tb-font-medium tb-border-none tb-cursor-pointer tb-whitespace-nowrap tb-transition-all tb-bg-[#e53935] tb-text-white hover:tb-bg-[#c62828] tb-animate-pulse"
+              onClick={handleRemoveTag}
+              title="Remove tag from selected blocks"
+            >
+              ✕ Remove ({selectedBlockUids.size})
+            </button>
+          )}
         </div>
-        <button
-          className="tb-bg-transparent tb-border-none tb-cursor-pointer tb-p-1 tb-rounded tb-text-[var(--text-secondary,#666)] tb-flex tb-items-center tb-justify-center hover:tb-bg-[var(--hover-bg,#f0f0f0)] disabled:tb-opacity-50 disabled:tb-cursor-not-allowed"
-          onClick={refreshTimeBlocks}
-          title="Refresh"
-          disabled={isLoading}
-        >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-          </svg>
-        </button>
+        <div className="tb-flex tb-items-center tb-gap-1">
+          <button
+            className="tb-bg-transparent tb-border-none tb-cursor-pointer tb-p-1 tb-rounded tb-text-[var(--text-secondary,#666)] tb-flex tb-items-center tb-justify-center hover:tb-bg-[var(--hover-bg,#f0f0f0)] disabled:tb-opacity-50 disabled:tb-cursor-not-allowed"
+            onClick={refreshTimeBlocks}
+            title="Refresh"
+            disabled={isLoading}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+            </svg>
+          </button>
+          <button
+            className="tb-bg-transparent tb-border-none tb-cursor-pointer tb-p-1 tb-rounded tb-text-[var(--text-secondary,#666)] tb-flex tb-items-center tb-justify-center hover:tb-bg-[var(--hover-bg,#f0f0f0)] hover:tb-text-[#e53935]"
+            onClick={unmountSidebar}
+            title="Close"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Tag Selector */}
-      {settings.configuredTags.length > 0 && (
-        <div className="tb-flex tb-flex-wrap tb-gap-1.5 tb-px-3 tb-py-2 tb-border-b tb-border-[var(--border-color,#e0e0e0)] tb-shrink-0">
-          {settings.configuredTags.map((tag) => (
-            <button
-              key={tag.tag}
-              className={`timeblock-tag-btn ${selectedTag?.tag === tag.tag ? "selected" : ""}`}
-              style={{
-                backgroundColor: selectedTag?.tag === tag.tag ? tag.color : "transparent",
-                borderColor: tag.color,
-                color: selectedTag?.tag === tag.tag ? "#fff" : tag.color,
-              }}
-              onClick={() => setSelectedTag(tag)}
-            >
-              #{tag.tag}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Tag Selector - select tag for new blocks, or apply to selected blocks */}
+      <div className="tb-flex tb-items-center tb-gap-1.5 tb-px-2 tb-py-1.5 tb-border-b tb-border-[var(--border-color,#e0e0e0)] tb-shrink-0 tb-overflow-x-auto">
+        {settings.colorConfigs
+          .filter((config) => config.tags.length > 0)
+          .map((config, index) => {
+            const isSelected = selectedTagIndex === index;
+            return (
+              <button
+                key={index}
+                className={`tb-px-2 tb-py-0.5 tb-rounded tb-text-[11px] tb-border-2 tb-cursor-pointer tb-whitespace-nowrap tb-transition-all hover:tb-opacity-80 hover:tb-scale-105 ${
+                  isSelected ? "tb-ring-2 tb-ring-offset-1 tb-ring-blue-500" : ""
+                }`}
+                style={{
+                  backgroundColor: config.color,
+                  color: isLightColor(config.color) ? "#333" : "#fff",
+                  borderColor: isSelected ? "white" : "transparent",
+                }}
+                onClick={() => handleTagClick(config, index)}
+                title={isSelected ? `Selected: #${config.tags[0]}` : `Select #${config.tags[0]}`}
+              >
+                #{config.tags[0]}
+              </button>
+            );
+          })}
+        {settings.colorConfigs.filter((c) => c.tags.length > 0).length === 0 && (
+          <span className="tb-text-[11px] tb-text-[var(--text-secondary,#888)]">
+            No tags configured
+          </span>
+        )}
+      </div>
 
       {/* Content */}
       {isLoading ? (
@@ -191,16 +423,19 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
           endHour={settings.dayEndHour}
           timeBlocks={timeBlocks}
           onBlockClick={handleBlockClick}
+          onBlockContextMenu={handleBlockContextMenu}
+          onBlockDrag={handleBlockDrag}
           onCreateBlock={handleCreateBlock}
-          selectedTagColor={selectedTag?.color}
+          selectedTagColor={settings.colorConfigs.filter((c) => c.tags.length > 0)[selectedTagIndex]?.color}
           dayBoundaryHour={getDayBoundaryHour(settings.dayEndHour)}
           pixelsPerHour={settings.hourHeight}
+          selectedBlockUids={selectedBlockUids}
         />
       )}
 
-      {/* Footer with block count */}
+      {/* Footer */}
       <div className="tb-px-3 tb-py-1.5 tb-border-t tb-border-[var(--border-color,#e0e0e0)] tb-text-[10px] tb-text-[var(--text-secondary,#888)] tb-text-center tb-shrink-0">
-        {timeBlocks.length} time block{timeBlocks.length !== 1 ? "s" : ""}
+        {timeBlocks.length} blocks | Click to select | Ctrl+Click multi-select
       </div>
     </div>
   );
@@ -211,42 +446,22 @@ let root: ReactDOM.Root | null = null;
 let container: HTMLDivElement | null = null;
 
 export function renderSidebar(extensionAPI: RoamExtensionAPI): void {
-  // Create container if it doesn't exist
   if (!container) {
     container = document.createElement("div");
     container.id = "timeblock-sidebar-container";
   }
 
-  // Find the sidebar-content inside right sidebar
   const sidebarContent = document.querySelector("#roam-right-sidebar-content .sidebar-content");
 
   if (sidebarContent && !container.parentNode) {
-    // Insert at the top of sidebar-content
     sidebarContent.prepend(container);
-    console.log("[TimeBlock] Inserted into .sidebar-content");
   } else if (!sidebarContent) {
-    // Fallback: try to find right-sidebar and prepend there
     const rightSidebar = document.getElementById("right-sidebar");
     if (rightSidebar && !container.parentNode) {
       rightSidebar.prepend(container);
-      console.log("[TimeBlock] Fallback: prepended to right-sidebar");
-    } else if (!rightSidebar) {
-      console.error("[TimeBlock] Could not find sidebar elements");
-      // Last resort: floating panel
-      document.body.appendChild(container);
-      container.style.position = "fixed";
-      container.style.right = "20px";
-      container.style.top = "50px";
-      container.style.width = "300px";
-      container.style.zIndex = "9999";
-      container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-      container.style.borderRadius = "8px";
-      container.style.overflow = "hidden";
-      console.log("[TimeBlock] Using floating panel fallback");
     }
   }
 
-  // Render React component
   if (!root) {
     root = ReactDOM.createRoot(container);
   }

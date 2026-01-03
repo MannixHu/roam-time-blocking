@@ -9,6 +9,13 @@ export interface ParsedTimeRange {
   originalText: string;
 }
 
+// New: One color can have multiple tags
+export interface ColorConfig {
+  color: string;
+  tags: string[];
+}
+
+// Keep TagConfig for backward compatibility in TimeBlockData
 export interface TagConfig {
   tag: string;
   color: string;
@@ -27,9 +34,20 @@ export interface TimeBlockData {
 export interface TimeBlockSettings {
   dayStartHour: number;
   dayEndHour: number;
-  configuredTags: TagConfig[];
+  colorConfigs: ColorConfig[];
   defaultColor: string;
   hourHeight: number; // pixels per hour (default 60)
+}
+
+// Helper to convert ColorConfig[] to TagConfig[] for scanning
+export function colorConfigsToTagConfigs(colorConfigs: ColorConfig[]): TagConfig[] {
+  const result: TagConfig[] = [];
+  for (const config of colorConfigs) {
+    for (const tag of config.tags) {
+      result.push({ tag, color: config.color, isPageRef: false });
+    }
+  }
+  return result;
 }
 
 // Roam API types

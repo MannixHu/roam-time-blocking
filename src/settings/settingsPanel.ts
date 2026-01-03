@@ -1,20 +1,25 @@
-import type { RoamExtensionAPI, TimeBlockSettings, TagConfig } from "../types";
-import { createTagConfigEditorComponent } from "./TagConfigEditor";
+import type { RoamExtensionAPI, TimeBlockSettings, ColorConfig, TagConfig } from "../types";
+import { colorConfigsToTagConfigs } from "../types";
+import { createColorConfigEditorComponent } from "./TagConfigEditor";
+
+// Default 4 colors: Red, Green, Yellow, Gray
+export const DEFAULT_COLOR_CONFIGS: ColorConfig[] = [
+  { color: "#E53935", tags: [] }, // Red
+  { color: "#7CB342", tags: [] }, // Green
+  { color: "#FDD835", tags: [] }, // Yellow
+  { color: "#757575", tags: [] }, // Gray
+];
 
 export const DEFAULT_SETTINGS: TimeBlockSettings = {
   dayStartHour: 6,
   dayEndHour: 22,
-  configuredTags: [
-    { tag: "longTerm", color: "#4A90D9", isPageRef: false },
-    { tag: "shortTerm", color: "#7CB342", isPageRef: false },
-  ],
+  colorConfigs: DEFAULT_COLOR_CONFIGS,
   defaultColor: "#9E9E9E",
-  hourHeight: 48, // pixels per hour (smaller = more hours visible)
+  hourHeight: 48,
 };
 
 export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
-  // Create the tag config editor component with extensionAPI access
-  const TagConfigEditorComponent = createTagConfigEditorComponent(extensionAPI);
+  const ColorConfigEditorComponent = createColorConfigEditorComponent(extensionAPI);
 
   extensionAPI.settings.panel.create({
     tabTitle: "TimeBlock",
@@ -38,21 +43,12 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
         },
       },
       {
-        id: "tagConfigs",
-        name: "Tag Configuration",
-        description: "Configure tags and their colors for time block tracking",
+        id: "colorConfigs",
+        name: "Color & Tag Configuration",
+        description: "Configure colors and their associated tags",
         action: {
           type: "reactComponent",
-          component: TagConfigEditorComponent,
-        },
-      },
-      {
-        id: "defaultColor",
-        name: "Default Color",
-        description: "Color for blocks without matching tags",
-        action: {
-          type: "input",
-          placeholder: "#9E9E9E",
+          component: ColorConfigEditorComponent,
         },
       },
       {
@@ -71,69 +67,74 @@ export function registerSettingsPanel(extensionAPI: RoamExtensionAPI): void {
 export function loadSettings(extensionAPI: RoamExtensionAPI): TimeBlockSettings {
   const dayStartHour = Math.min(23, Math.max(0, Number(extensionAPI.settings.get("dayStartHour")) || DEFAULT_SETTINGS.dayStartHour));
   const rawDayEndHour = Number(extensionAPI.settings.get("dayEndHour")) || DEFAULT_SETTINGS.dayEndHour;
-  // Support hours up to 30 (6 AM next day)
   const dayEndHour = Math.min(30, Math.max(0, rawDayEndHour));
-  const defaultColor = (extensionAPI.settings.get("defaultColor") as string) || DEFAULT_SETTINGS.defaultColor;
-  // Hour height: 20-100 pixels, default 48
+  const defaultColor = DEFAULT_SETTINGS.defaultColor;
   const rawHourHeight = Number(extensionAPI.settings.get("hourHeight")) || DEFAULT_SETTINGS.hourHeight;
   const hourHeight = Math.min(100, Math.max(20, rawHourHeight));
 
-  // Try to load tags from new JSON format first
-  let configuredTags: TagConfig[] = [];
-  const tagConfigsJson = extensionAPI.settings.get("tagConfigs") as string;
+  // Try to load from new ColorConfig format
+  let colorConfigs: ColorConfig[] = [];
+  const colorConfigsJson = extensionAPI.settings.get("colorConfigs") as string;
 
-  if (tagConfigsJson) {
+  if (colorConfigsJson) {
     try {
-      configuredTags = JSON.parse(tagConfigsJson) as TagConfig[];
+      colorConfigs = JSON.parse(colorConfigsJson) as ColorConfig[];
     } catch (e) {
-      console.error("[TimeBlock] Failed to parse tagConfigs:", e);
+      console.error("[TimeBlock] Failed to parse colorConfigs:", e);
     }
   }
 
-  // Fallback to old string format for backward compatibility
-  if (configuredTags.length === 0) {
-    const tagsStr = (extensionAPI.settings.get("timeBlockTags") as string) || "";
-    const colorsStr = (extensionAPI.settings.get("tagColors") as string) || "";
-    configuredTags = parseTagsAndColors(tagsStr, colorsStr, defaultColor);
-
-    // Migrate to new format if old format exists
-    if (configuredTags.length > 0) {
-      extensionAPI.settings.set("tagConfigs", JSON.stringify(configuredTags));
-      console.log("[TimeBlock] Migrated tags to new format");
+  // Migrate from old TagConfig format if needed
+  if (colorConfigs.length === 0) {
+    const tagConfigsJson = extensionAPI.settings.get("tagConfigs") as string;
+    if (tagConfigsJson) {
+      try {
+        const oldTags = JSON.parse(tagConfigsJson) as TagConfig[];
+        colorConfigs = migrateFromTagConfigs(oldTags);
+        // Save migrated data
+        extensionAPI.settings.set("colorConfigs", JSON.stringify(colorConfigs));
+        console.log("[TimeBlock] Migrated from TagConfig to ColorConfig format");
+      } catch (e) {
+        console.error("[TimeBlock] Failed to migrate tagConfigs:", e);
+      }
     }
+  }
+
+  // Use defaults if still empty
+  if (colorConfigs.length === 0) {
+    colorConfigs = DEFAULT_COLOR_CONFIGS;
   }
 
   return {
     dayStartHour,
     dayEndHour,
-    configuredTags: configuredTags.length > 0 ? configuredTags : DEFAULT_SETTINGS.configuredTags,
+    colorConfigs,
     defaultColor,
     hourHeight,
   };
 }
 
-// Keep for backward compatibility migration
-function parseTagsAndColors(tagsStr: string, colorsStr: string, defaultColor: string): TagConfig[] {
-  if (!tagsStr.trim()) return [];
+// Migrate old TagConfig[] to ColorConfig[]
+function migrateFromTagConfigs(tagConfigs: TagConfig[]): ColorConfig[] {
+  const colorMap = new Map<string, string[]>();
 
-  // Parse color map: "tag:#color, tag2:#color2"
-  const colorMap = new Map<string, string>();
-  if (colorsStr.trim()) {
-    colorsStr.split(",").forEach((pair) => {
-      const [tag, color] = pair.split(":").map((s) => s.trim());
-      if (tag && color) {
-        colorMap.set(tag.toLowerCase(), color);
-      }
-    });
+  for (const tc of tagConfigs) {
+    const existing = colorMap.get(tc.color) || [];
+    existing.push(tc.tag);
+    colorMap.set(tc.color, existing);
   }
 
-  // Parse tags: "tag1, tag2, [[PageRef]]"
-  return tagsStr.split(",").map((t) => {
-    const trimmed = t.trim();
-    const isPageRef = trimmed.startsWith("[[") && trimmed.endsWith("]]");
-    const tag = isPageRef ? trimmed.slice(2, -2) : trimmed.replace(/^#/, "");
-    const color = colorMap.get(tag.toLowerCase()) || defaultColor;
+  const result: ColorConfig[] = [];
+  for (const [color, tags] of colorMap) {
+    result.push({ color, tags });
+  }
 
-    return { tag, color, isPageRef };
-  });
+  // Ensure we have the 4 default colors even if empty
+  for (const defaultConfig of DEFAULT_COLOR_CONFIGS) {
+    if (!result.find((c) => c.color === defaultConfig.color)) {
+      result.push({ ...defaultConfig });
+    }
+  }
+
+  return result;
 }

@@ -9,7 +9,11 @@ A Roam Research plugin that displays time blocks in a calendar-like sidebar view
 - **Tag-based Coloring**: Color-code time blocks based on tags (e.g., `#longTerm`, `#shortTerm`)
 - **Tag Inheritance**: Blocks inherit tags from parent blocks
 - **Drag to Create**: Drag on the calendar to quickly create new time blocks (15-minute granularity)
-- **Click to Navigate**: Click any time block to navigate to it in Roam
+- **Drag to Move**: Select a block and drag to change its time
+- **Drag to Resize**: Drag the top/bottom edges of a selected block to change duration
+- **Multi-select**: Ctrl/Cmd+Click to select multiple blocks
+- **Keyboard Navigation**: Use arrow keys to move selected blocks up/down
+- **Tag Management**: Click tag buttons to apply tags to selected blocks, right-click to remove tag
 
 ## Installation
 
@@ -25,7 +29,7 @@ A Roam Research plugin that displays time blocks in a calendar-like sidebar view
 1. Clone this repository
 2. Run `npm install`
 3. Run `npm run build`
-4. Upload `build/extension.js` to Roam
+4. Upload `extension.js` to Roam
 
 ## Usage
 
@@ -37,14 +41,32 @@ Create blocks with time ranges in these formats:
 - `10:00 - 12:00` - with spaces
 - `10:00am-12:00pm` - 12-hour format
 
+### Creating Time Blocks
+
+1. Position your cursor in a Roam block where you want the new time block
+2. Drag on the calendar grid to create a new time block
+3. The new block will be inserted as a sibling at your cursor position
+
+### Selecting and Editing
+
+- **Single click**: Select a block
+- **Ctrl/Cmd+Click**: Multi-select blocks
+- **Drag center**: Move block to a new time (requires selection first)
+- **Drag edges**: Resize block duration (requires selection first)
+- **Arrow keys**: Move selected blocks by 15 minutes
+- **Right-click**: Remove tag from block (keeps time)
+- **Remove button**: Remove both tag and time from selected blocks
+
 ### Tags
 
-Configure which tags trigger time block parsing in the settings:
+Configure which tags trigger time block display in the settings:
 
 - `#longTerm` - Hashtag format
 - `[[Meeting]]` - Page reference format
 
-Time blocks will be colored based on their associated tag.
+Time blocks will be colored based on their associated tag. Click a tag button in the sidebar to:
+- Select it as the default tag for new blocks
+- Apply it to currently selected blocks
 
 ### Tag Inheritance
 
@@ -64,10 +86,9 @@ Example:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Day Start Hour | First hour shown in calendar | 6 |
-| Day End Hour | Last hour shown in calendar | 22 |
-| Time Block Tags | Tags that trigger parsing | `longTerm, shortTerm` |
-| Tag Colors | Color for each tag | `longTerm:#4A90D9, shortTerm:#7CB342` |
-| Default Color | Color for untagged blocks | `#9E9E9E` |
+| Day End Hour | Last hour shown (supports >24 for next day) | 22 |
+| Hour Height | Pixels per hour in the calendar | 48 |
+| Tag Colors | Configure tags and their colors | - |
 
 ## Development
 
@@ -81,6 +102,14 @@ npm run dev
 # Production build
 npm run build
 ```
+
+### Tech Stack
+
+- React 18
+- TypeScript
+- @dnd-kit/core - Drag and drop interactions
+- Tailwind CSS - Styling (with `tb-` prefix)
+- Webpack - Bundling
 
 ## License
 
