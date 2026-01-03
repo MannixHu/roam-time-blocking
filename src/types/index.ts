@@ -37,6 +37,9 @@ export interface TimeBlockSettings {
   colorConfigs: ColorConfig[];
   defaultColor: string;
   hourHeight: number; // pixels per hour (default 60)
+  viewMode: "day" | "week"; // Calendar view mode
+  weekStartDay: 0 | 1; // 0 = Sunday, 1 = Monday
+  timeGranularity: number; // minutes per snap unit (default 15)
 }
 
 // Helper to convert ColorConfig[] to TagConfig[] for scanning

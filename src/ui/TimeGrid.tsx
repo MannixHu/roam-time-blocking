@@ -33,10 +33,11 @@ interface TimeGridProps {
   dayBoundaryHour?: number;
   pixelsPerHour?: number;
   selectedBlockUids: Set<string>;
+  timeGranularity?: number;
 }
 
 const DEFAULT_PIXELS_PER_HOUR = 48;
-const GRANULARITY = 15; // 15-minute granularity
+const DEFAULT_GRANULARITY = 15; // 15-minute granularity
 
 // Calculate column layout for overlapping blocks
 interface BlockLayout {
@@ -138,8 +139,10 @@ export const TimeGrid: React.FC<TimeGridProps> = ({
   dayBoundaryHour = 5,
   pixelsPerHour = DEFAULT_PIXELS_PER_HOUR,
   selectedBlockUids,
+  timeGranularity = DEFAULT_GRANULARITY,
 }) => {
   const PIXELS_PER_HOUR = pixelsPerHour;
+  const GRANULARITY = timeGranularity;
   const effectiveEndHour = endHour <= startHour ? endHour + 24 : endHour;
   const hours = Array.from({ length: effectiveEndHour - startHour }, (_, i) => startHour + i);
 
@@ -202,17 +205,18 @@ export const TimeGrid: React.FC<TimeGridProps> = ({
     return layouts.find((l) => l.block.uid === activeId);
   }, [timeBlocks, activeId, activeBlock]);
 
-  // Calculate new time from drag delta
+  // Calculate new time from drag delta - snap to absolute 15-minute positions
   const calculateNewTime = useCallback(
     (block: TimeBlockData, deltaY: number) => {
-      const deltaMinutes = Math.round((deltaY / PIXELS_PER_HOUR) * 60);
-      const snappedDelta = snapToGrid(deltaMinutes, GRANULARITY) - (deltaMinutes % GRANULARITY === 0 ? 0 : deltaMinutes % GRANULARITY);
+      const deltaMinutes = (deltaY / PIXELS_PER_HOUR) * 60;
 
       const startMinutes = block.timeRange.startHour * 60 + block.timeRange.startMinute;
       const endMinutes = block.timeRange.endHour * 60 + block.timeRange.endMinute;
-
-      const newStartMinutes = startMinutes + Math.round((deltaY / PIXELS_PER_HOUR) * 60 / GRANULARITY) * GRANULARITY;
       const duration = endMinutes - startMinutes;
+
+      // Calculate new start and snap to absolute 15-minute position
+      const rawNewStart = startMinutes + deltaMinutes;
+      const newStartMinutes = Math.round(rawNewStart / GRANULARITY) * GRANULARITY;
       const newEndMinutes = newStartMinutes + duration;
 
       return {
@@ -310,19 +314,22 @@ export const TimeGrid: React.FC<TimeGridProps> = ({
       }
 
       const deltaY = e.clientY - resizeStartY;
-      const deltaMinutes = Math.round((deltaY / PIXELS_PER_HOUR) * 60);
-      const snappedDelta = Math.round(deltaMinutes / GRANULARITY) * GRANULARITY;
+      const deltaMinutes = (deltaY / PIXELS_PER_HOUR) * 60;
 
       let newStart = resizeOriginalStart;
       let newEnd = resizeOriginalEnd;
 
       if (resizeEdge === "top") {
-        newStart = resizeOriginalStart + snappedDelta;
+        // Snap to absolute 15-minute position
+        const rawNewStart = resizeOriginalStart + deltaMinutes;
+        newStart = Math.round(rawNewStart / GRANULARITY) * GRANULARITY;
         // Ensure minimum duration of 15 minutes and bounds
         newStart = Math.min(newStart, resizeOriginalEnd - GRANULARITY);
         newStart = Math.max(newStart, startHour * 60);
       } else {
-        newEnd = resizeOriginalEnd + snappedDelta;
+        // Snap to absolute 15-minute position
+        const rawNewEnd = resizeOriginalEnd + deltaMinutes;
+        newEnd = Math.round(rawNewEnd / GRANULARITY) * GRANULARITY;
         // Ensure minimum duration of 15 minutes and bounds
         newEnd = Math.max(newEnd, resizeOriginalStart + GRANULARITY);
         newEnd = Math.min(newEnd, effectiveEndHour * 60);

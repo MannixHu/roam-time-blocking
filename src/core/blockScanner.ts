@@ -1,7 +1,7 @@
 import type { TimeBlockData, TagConfig } from "../types";
 import { parseTimeRange } from "./timeParser";
 import { findAssociatedTag } from "./tagResolver";
-import { getBlockWithParent, getTodayPageTitle, getNextDayPageTitle } from "../api/roamQueries";
+import { getBlockWithParent, getPageTitleForDate } from "../api/roamQueries";
 
 export function scanPageForTimeBlocks(
   pageTitle: string,
@@ -50,25 +50,85 @@ export function scanPageForTimeBlocks(
   return timeBlocks;
 }
 
-export function scanTodayForTimeBlocks(
+// Scan for time blocks on a specific date (with next day boundary support)
+export function scanDateForTimeBlocks(
+  targetDate: Date,
   configuredTags: TagConfig[],
   dayBoundaryHour: number = 5
 ): TimeBlockData[] {
-  const todayTitle = getTodayPageTitle();
-  const nextDayTitle = getNextDayPageTitle();
+  const targetTitle = getPageTitleForDate(targetDate);
 
-  // Scan today's page
-  const todayBlocks = scanPageForTimeBlocks(todayTitle, configuredTags, false, dayBoundaryHour);
+  // Get next day's date
+  const nextDay = new Date(targetDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDayTitle = getPageTitleForDate(nextDay);
+
+  // Scan target date's page
+  const targetBlocks = scanPageForTimeBlocks(targetTitle, configuredTags, false, dayBoundaryHour);
 
   // Scan next day's page for early morning blocks (before day boundary)
   const nextDayBlocks = scanPageForTimeBlocks(nextDayTitle, configuredTags, true, dayBoundaryHour);
 
   // Combine and sort by adjusted time
-  const allBlocks = [...todayBlocks, ...nextDayBlocks];
+  const allBlocks = [...targetBlocks, ...nextDayBlocks];
 
   return allBlocks.sort((a, b) => {
     const aMinutes = a.timeRange.startHour * 60 + a.timeRange.startMinute;
     const bMinutes = b.timeRange.startHour * 60 + b.timeRange.startMinute;
     return aMinutes - bMinutes;
   });
+}
+
+// Legacy function for backward compatibility - scans today's blocks
+export function scanTodayForTimeBlocks(
+  configuredTags: TagConfig[],
+  dayBoundaryHour: number = 5
+): TimeBlockData[] {
+  return scanDateForTimeBlocks(new Date(), configuredTags, dayBoundaryHour);
+}
+
+// Scan for time blocks for a whole week
+export function scanWeekForTimeBlocks(
+  weekStartDate: Date,
+  configuredTags: TagConfig[],
+  dayBoundaryHour: number = 5
+): Map<string, TimeBlockData[]> {
+  const weekBlocks = new Map<string, TimeBlockData[]>();
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(weekStartDate);
+    date.setDate(date.getDate() + i);
+    const pageTitle = getPageTitleForDate(date);
+
+    // For week view, we don't include next-day blocks to avoid confusion
+    // Each day column shows only that day's blocks
+    const dayBlocks = scanPageForTimeBlocks(pageTitle, configuredTags, false, dayBoundaryHour);
+
+    weekBlocks.set(pageTitle, dayBlocks.sort((a, b) => {
+      const aMinutes = a.timeRange.startHour * 60 + a.timeRange.startMinute;
+      const bMinutes = b.timeRange.startHour * 60 + b.timeRange.startMinute;
+      return aMinutes - bMinutes;
+    }));
+  }
+
+  return weekBlocks;
+}
+
+// Get the start of week for a given date
+export function getWeekStartDate(date: Date, weekStartDay: 0 | 1 = 1): Date {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+  // Calculate days to subtract to get to week start
+  let diff: number;
+  if (weekStartDay === 1) {
+    // Monday start
+    diff = day === 0 ? 6 : day - 1;
+  } else {
+    // Sunday start
+    diff = day;
+  }
+
+  d.setDate(d.getDate() - diff);
+  return d;
 }

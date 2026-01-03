@@ -67,10 +67,10 @@ export async function createTimeBlock(
   // Format time range
   const timeString = formatTimeRange(startHour, startMinute, endHour, endMinute);
 
-  // Build block text
+  // Build block text (extra space between time and tag for easier editing)
   let blockText = timeString;
   if (tag) {
-    blockText += ` #${tag}`;
+    blockText += `  #${tag}`;
   }
 
   const newUid = generateBlockUid();
