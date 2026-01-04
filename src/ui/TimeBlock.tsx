@@ -6,6 +6,7 @@ import React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { TimeBlockData } from "../types";
 import { formatTime } from "../core/timeParser";
+import { isLightColor } from "../core/utils";
 
 interface TimeBlockProps {
   data: TimeBlockData;
@@ -74,6 +75,7 @@ export const TimeBlock: React.FC<TimeBlockProps> = ({
   const backgroundColor = tag?.color || "#cccccc";
   const borderColor = darkenColor(backgroundColor, 20);
   const displayText = text.replace(timeRange.originalText, "").trim();
+  const textColor = isLightColor(backgroundColor) ? "rgba(0,0,0,0.8)" : "rgba(255,255,255,0.9)";
 
   // Show preview time during resize, otherwise show actual time
   const timeDisplay = resizePreview
@@ -138,14 +140,15 @@ export const TimeBlock: React.FC<TimeBlockProps> = ({
           top: isSelected ? resizeHandleHeight : 0,
           bottom: isSelected ? resizeHandleHeight : 0,
           cursor: isDragging ? "grabbing" : isSelected ? "grab" : "pointer",
+          color: textColor,
         }}
         {...(isSelected && !isResizing ? { ...listeners, ...attributes } : {})}
       >
-        <div className={`tb-text-[9px] tb-font-semibold tb-pt-0.5 ${isResizing ? "tb-text-blue-700" : "tb-text-black/70"}`}>
+        <div className={`tb-text-[9px] tb-font-semibold tb-pt-0.5 ${isResizing ? "tb-text-blue-700" : ""}`}>
           {timeDisplay}
         </div>
         {height > 30 && (
-          <div className="tb-text-[10px] tb-whitespace-nowrap tb-overflow-hidden tb-text-ellipsis tb-text-black/80 tb-mt-px">
+          <div className="tb-text-[10px] tb-whitespace-nowrap tb-overflow-hidden tb-text-ellipsis tb-mt-px tb-opacity-90">
             {displayText || (tag?.tag ? `#${tag.tag}` : "")}
           </div>
         )}
