@@ -21,6 +21,7 @@ import { TimeBlock } from "./TimeBlock";
 import { DragSelection, DragSelectionData } from "./DragSelection";
 import { snapToGrid, formatTime } from "../core/timeParser";
 import { calculateBlockLayouts } from "../core/layoutCalculator";
+import { isLightColor } from "../core/utils";
 
 interface TimeGridProps {
   startHour: number;
@@ -548,33 +549,38 @@ export const TimeGrid: React.FC<TimeGridProps> = ({
 
       {/* Drag Overlay - renders outside the scrollable container */}
       <DragOverlay>
-        {activeBlock && activeBlockLayout && (
-          <div
-            className="tb-rounded tb-px-1 tb-py-0.5 tb-shadow-xl tb-opacity-90"
-            style={{
-              width: "150px",
-              height: `${Math.max(
-                ((activeBlock.timeRange.endHour * 60 + activeBlock.timeRange.endMinute) -
-                  (activeBlock.timeRange.startHour * 60 + activeBlock.timeRange.startMinute)) /
-                  60 *
-                  PIXELS_PER_HOUR,
-                20
-              )}px`,
-              backgroundColor: activeBlock.tag?.color || "#cccccc",
-              borderLeft: "3px solid rgba(0,0,0,0.2)",
-            }}
-          >
-            <div className="tb-text-[9px] tb-font-semibold tb-text-blue-700">
-              {previewTime
-                ? `${formatTime(previewTime.startHour, previewTime.startMinute)}-${formatTime(previewTime.endHour, previewTime.endMinute)}`
-                : `${formatTime(activeBlock.timeRange.startHour, activeBlock.timeRange.startMinute)}-${formatTime(activeBlock.timeRange.endHour, activeBlock.timeRange.endMinute)}`}
+        {activeBlock && activeBlockLayout && (() => {
+          const bgColor = activeBlock.tag?.color || "#cccccc";
+          const textColor = isLightColor(bgColor) ? "#333" : "#fff";
+          return (
+            <div
+              className="tb-rounded tb-px-1 tb-py-0.5 tb-shadow-xl tb-opacity-90"
+              style={{
+                width: "150px",
+                height: `${Math.max(
+                  ((activeBlock.timeRange.endHour * 60 + activeBlock.timeRange.endMinute) -
+                    (activeBlock.timeRange.startHour * 60 + activeBlock.timeRange.startMinute)) /
+                    60 *
+                    PIXELS_PER_HOUR,
+                  20
+                )}px`,
+                backgroundColor: bgColor,
+                borderLeft: "3px solid rgba(0,0,0,0.2)",
+                color: textColor,
+              }}
+            >
+              <div className="tb-text-[9px] tb-font-semibold">
+                {previewTime
+                  ? `${formatTime(previewTime.startHour, previewTime.startMinute)}-${formatTime(previewTime.endHour, previewTime.endMinute)}`
+                  : `${formatTime(activeBlock.timeRange.startHour, activeBlock.timeRange.startMinute)}-${formatTime(activeBlock.timeRange.endHour, activeBlock.timeRange.endMinute)}`}
+              </div>
+              <div className="tb-text-[10px] tb-opacity-80 tb-mt-px tb-truncate">
+                {activeBlock.text.replace(activeBlock.timeRange.originalText, "").trim() ||
+                  (activeBlock.tag?.tag ? `#${activeBlock.tag.tag}` : "")}
+              </div>
             </div>
-            <div className="tb-text-[10px] tb-text-black/80 tb-mt-px tb-truncate">
-              {activeBlock.text.replace(activeBlock.timeRange.originalText, "").trim() ||
-                (activeBlock.tag?.tag ? `#${activeBlock.tag.tag}` : "")}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </DragOverlay>
     </DndContext>
   );

@@ -6,6 +6,7 @@ import { loadSettings } from "../settings/settingsPanel";
 import { scanDateForTimeBlocks, scanWeekForTimeBlocks, getWeekStartDate } from "../core/blockScanner";
 import { createTimeBlock, updateBlockTag, removeBlockTag, removeBlockTimeAndTag, updateBlockTime } from "../core/blockCreator";
 import { getCurrentViewedDate, getPageTitleForDate, getBlockPageTitle, getDailyPageDate } from "../api/roamQueries";
+import { isLightColor, showToast, cleanupToastContainer } from "../core/utils";
 import { TimeGrid } from "./TimeGrid";
 import { WeekGrid } from "./WeekGrid";
 
@@ -14,17 +15,6 @@ function getDayBoundaryHour(dayEndHour: number): number {
     return dayEndHour - 24;
   }
   return 0;
-}
-
-// Check if a color is light (for text contrast)
-function isLightColor(hex: string): boolean {
-  const color = hex.replace("#", "");
-  const r = parseInt(color.substring(0, 2), 16);
-  const g = parseInt(color.substring(2, 4), 16);
-  const b = parseInt(color.substring(4, 6), 16);
-  // Using relative luminance formula
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
 }
 
 interface CalendarSidebarProps {
@@ -54,7 +44,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
   const captureFocusedBlock = useCallback((force = false) => {
     // Throttle captures to avoid performance issues (except when forced)
     const now = Date.now();
-    if (!force && now - lastCaptureTimeRef.current < 100) return;
+    if (!force && now - lastCaptureTimeRef.current < 500) return; // 500ms throttle
     lastCaptureTimeRef.current = now;
 
     // Method 1: Try Roam API first
@@ -91,9 +81,10 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
     captureFocusedBlock(true); // Force capture on enter
   }, [captureFocusedBlock]);
 
-  // Also capture on mousemove - always try to capture fresh value
-  // This ensures we get the latest focused block even if user switches blocks
+  // Throttled mousemove - only capture every 500ms to reduce overhead
   const handleMouseMove = useCallback(() => {
+    // The global focusin listener already tracks focus changes
+    // Only capture here as a fallback with longer throttle (100ms is set in captureFocusedBlock)
     captureFocusedBlock();
   }, [captureFocusedBlock]);
 
@@ -280,6 +271,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
             await updateBlockTag(uid, tagConfig, tagConfigs);
           } catch (error) {
             console.error("[TimeBlock] Error updating block tag:", error);
+            showToast("Failed to update block tag", "error");
           }
         }
         setSelectedBlockUids(new Set());
@@ -302,6 +294,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
         await removeBlockTimeAndTag(uid, tagConfigs);
       } catch (error) {
         console.error("[TimeBlock] Error removing block tag:", error);
+        showToast("Failed to remove block", "error");
       }
     }
     setSelectedBlockUids(new Set());
@@ -324,6 +317,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
           await removeBlockTag(blockUid, tagConfigs);
         } catch (error) {
           console.error("[TimeBlock] Error removing block tag:", error);
+          showToast("Failed to remove tag", "error");
         }
       }
 
@@ -343,6 +337,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
         setTimeout(refreshTimeBlocks, 100);
       } catch (error) {
         console.error("[TimeBlock] Error updating block time:", error);
+        showToast("Failed to update block time", "error");
       }
     },
     [refreshTimeBlocks]
@@ -364,6 +359,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
         setTimeout(refreshTimeBlocks, 100);
       } catch (error) {
         console.error("[TimeBlock] Error creating time block:", error);
+        showToast("Failed to create block", "error");
       }
     },
     [selectedTagIndex, refreshTimeBlocks]
@@ -427,6 +423,16 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
 
     return { dates, titles };
   }, [viewedDate, settings, viewMode]);
+
+  // Memoized week block count to avoid recalculating on every render
+  const weekBlockCount = useMemo(() => {
+    if (viewMode !== "week") return 0;
+    let total = 0;
+    for (const blocks of weekBlocks.values()) {
+      total += blocks.length;
+    }
+    return total;
+  }, [weekBlocks, viewMode]);
 
   if (!settings) {
     return (
@@ -606,7 +612,7 @@ const CalendarSidebar: React.FC<CalendarSidebarProps> = ({ extensionAPI }) => {
       {/* Footer */}
       <div className="tb-px-3 tb-py-1.5 tb-border-t tb-border-[var(--border-color,#e0e0e0)] tb-text-[10px] tb-text-[var(--text-secondary,#888)] tb-text-center tb-shrink-0">
         {viewMode === "week"
-          ? `${Array.from(weekBlocks.values()).reduce((sum, blocks) => sum + blocks.length, 0)} blocks this week`
+          ? `${weekBlockCount} blocks this week`
           : `${timeBlocks.length} blocks | Click to select | Ctrl+Click multi-select`}
       </div>
     </div>
@@ -656,4 +662,7 @@ export function unmountSidebar(): void {
     container.parentNode.removeChild(container);
   }
   container = null;
+
+  // Clean up toast container to prevent memory leaks
+  cleanupToastContainer();
 }

@@ -5,6 +5,7 @@ import React, { useMemo, useCallback } from "react";
 import type { TimeBlockData } from "../types";
 import { formatTime } from "../core/timeParser";
 import { calculateBlockLayouts, BlockLayout } from "../core/layoutCalculator";
+import { isLightColor, isToday } from "../core/utils";
 
 interface WeekGridProps {
   startHour: number;
@@ -33,26 +34,6 @@ function formatDayHeader(date: Date, weekStartDay: 0 | 1): { dayName: string; da
   const dayName = weekStartDay === 1 ? DAY_NAMES_MON_START[dayOfWeek === 0 ? 6 : dayOfWeek - 1] : DAY_NAMES_SHORT[dayOfWeek];
   const dayNum = date.getDate().toString();
   return { dayName, dayNum };
-}
-
-// Check if a date is today
-function isToday(date: Date): boolean {
-  const today = new Date();
-  return (
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear()
-  );
-}
-
-// Check if a color is light (for text contrast)
-function isLightColor(hex: string): boolean {
-  const color = hex.replace("#", "");
-  const r = parseInt(color.substring(0, 2), 16);
-  const g = parseInt(color.substring(2, 4), 16);
-  const b = parseInt(color.substring(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
 }
 
 export const WeekGrid: React.FC<WeekGridProps> = ({

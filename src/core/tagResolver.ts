@@ -1,9 +1,9 @@
 import type { TagConfig } from "../types";
 import { getBlockContent, getParentBlockUid } from "../api/roamQueries";
+import { escapeRegex } from "./utils";
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// Maximum depth to traverse parent hierarchy (prevent performance issues with deeply nested structures)
+const MAX_PARENT_DEPTH = 50;
 
 function createTagMatcher(config: TagConfig): RegExp {
   // Match both #tag and [[tag]] formats (case-insensitive)
@@ -44,9 +44,11 @@ export function findAssociatedTagBatch(
 
   let currentUid: string | null = blockUid;
   const visited = new Set<string>(); // Prevent infinite loops
+  let depth = 0;
 
-  while (currentUid && !visited.has(currentUid)) {
+  while (currentUid && !visited.has(currentUid) && depth < MAX_PARENT_DEPTH) {
     visited.add(currentUid);
+    depth++;
 
     // Use cached content
     const content = contentMap.get(currentUid);
@@ -81,8 +83,10 @@ export function findAssociatedTag(blockUid: string, configuredTags: TagConfig[])
 
   const tagMatchers = buildTagMatchers(configuredTags);
   let currentUid: string | null = blockUid;
+  let depth = 0;
 
-  while (currentUid) {
+  while (currentUid && depth < MAX_PARENT_DEPTH) {
+    depth++;
     const content = getBlockContent(currentUid);
 
     const tag = findTagInTextWithMatchers(content, tagMatchers);

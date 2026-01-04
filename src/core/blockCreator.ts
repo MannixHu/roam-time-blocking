@@ -1,15 +1,11 @@
 import { formatTimeRange } from "./timeParser";
 import { getPageUidByTitle, getTodayPageTitle, getBlockInfo, getBlockContent } from "../api/roamQueries";
+import { escapeRegex } from "./utils";
 import type { TagConfig } from "../types";
 
 function generateBlockUid(): string {
   // Generate a 9-character alphanumeric UID similar to Roam's format
   return Math.random().toString(36).substring(2, 11);
-}
-
-// Escape regex special characters
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Update the tag on an existing block

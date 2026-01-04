@@ -132,8 +132,15 @@ export function loadSettings(extensionAPI: RoamExtensionAPI): TimeBlockSettings 
   const viewMode = (extensionAPI.settings.get("viewMode") as "day" | "week") || DEFAULT_SETTINGS.viewMode;
   const rawWeekStartDay = Number(extensionAPI.settings.get("weekStartDay"));
   const weekStartDay = (rawWeekStartDay === 0 || rawWeekStartDay === 1) ? rawWeekStartDay as 0 | 1 : DEFAULT_SETTINGS.weekStartDay;
+
+  // Time granularity must divide 60 evenly (valid: 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60)
   const rawTimeGranularity = Number(extensionAPI.settings.get("timeGranularity")) || DEFAULT_SETTINGS.timeGranularity;
-  const timeGranularity = Math.min(60, Math.max(5, rawTimeGranularity)); // 5-60 minutes
+  const validGranularities = [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60];
+  const timeGranularity = validGranularities.includes(rawTimeGranularity)
+    ? rawTimeGranularity
+    : validGranularities.reduce((prev, curr) =>
+        Math.abs(curr - rawTimeGranularity) < Math.abs(prev - rawTimeGranularity) ? curr : prev
+      );
 
   // Try to load from new ColorConfig format
   let colorConfigs: ColorConfig[] = [];
