@@ -34,36 +34,81 @@ export function getBlocksOnPage(pageTitle: string): RoamBlock[] {
 }
 
 export function getBlockWithParent(pageTitle: string): Array<{ uid: string; string: string; order: number; parentUid: string }> {
-  // First get all blocks on the page
+  // Single query to get all blocks with their parent UIDs - avoids N+1 problem
   const query = `
-    [:find ?uid ?string ?order
+    [:find ?uid ?string ?order ?parent-uid
      :in $ ?title
      :where
        [?page :node/title ?title]
        [?block :block/page ?page]
        [?block :block/uid ?uid]
        [?block :block/string ?string]
-       [?block :block/order ?order]]
+       [?block :block/order ?order]
+       [?parent :block/children ?block]
+       [?parent :block/uid ?parent-uid]]
   `;
 
-  const results = window.roamAlphaAPI.q(query, pageTitle) as [string, string, number][];
+  const results = window.roamAlphaAPI.q(query, pageTitle) as [string, string, number, string][];
 
-  // For each block, get its direct parent using pull API
-  return results.map(([uid, string, order]) => {
-    const pullResult = window.roamAlphaAPI.pull(
-      "[{:block/_children [:block/uid]}]",
-      [":block/uid", uid]
-    );
-    const parentData = pullResult?.[":block/_children"] as Array<{ ":block/uid": string }> | undefined;
-    const parentUid = parentData?.[0]?.[":block/uid"] || "";
+  return results.map(([uid, string, order, parentUid]) => ({
+    uid,
+    string,
+    order,
+    parentUid,
+  }));
+}
 
-    return {
-      uid,
-      string,
-      order,
-      parentUid,
-    };
-  });
+// Batch fetch all blocks and their ancestors' content for tag resolution
+// Returns: { contentMap: uid -> content, parentMap: uid -> parentUid }
+export function getBlockHierarchyData(pageTitle: string): {
+  blocks: Array<{ uid: string; string: string; order: number; parentUid: string }>;
+  contentMap: Map<string, string>;
+  parentMap: Map<string, string>;
+} {
+  // Get all blocks with parent UIDs
+  const blocks = getBlockWithParent(pageTitle);
+
+  // Build maps for quick lookup
+  const contentMap = new Map<string, string>();
+  const parentMap = new Map<string, string>();
+
+  for (const block of blocks) {
+    contentMap.set(block.uid, block.string);
+    parentMap.set(block.uid, block.parentUid);
+  }
+
+  // Also fetch ancestor content that might not be in blocks list
+  // (parents could be outside the page's direct blocks if deeply nested)
+  const missingParents = new Set<string>();
+  for (const block of blocks) {
+    let parentUid = block.parentUid;
+    while (parentUid && !contentMap.has(parentUid)) {
+      missingParents.add(parentUid);
+      // We'll need to fetch these
+      break; // Only mark immediate missing parent, will traverse later
+    }
+  }
+
+  // Batch fetch missing parent content
+  if (missingParents.size > 0) {
+    for (const uid of missingParents) {
+      // Fetch content and parent in one pull call
+      const result = window.roamAlphaAPI.pull(
+        "[:block/string {:block/_children [:block/uid]}]",
+        [":block/uid", uid]
+      );
+      if (result) {
+        const content = (result[":block/string"] as string) || "";
+        contentMap.set(uid, content);
+        const parentData = result[":block/_children"] as Array<{ ":block/uid": string }> | undefined;
+        if (parentData?.[0]?.[":block/uid"]) {
+          parentMap.set(uid, parentData[0][":block/uid"]);
+        }
+      }
+    }
+  }
+
+  return { blocks, contentMap, parentMap };
 }
 
 export function getPageUidByTitle(title: string): string | null {

@@ -20,6 +20,7 @@ import type { TimeBlockData } from "../types";
 import { TimeBlock } from "./TimeBlock";
 import { DragSelection, DragSelectionData } from "./DragSelection";
 import { snapToGrid, formatTime } from "../core/timeParser";
+import { calculateBlockLayouts } from "../core/layoutCalculator";
 
 interface TimeGridProps {
   startHour: number;
@@ -38,79 +39,6 @@ interface TimeGridProps {
 
 const DEFAULT_PIXELS_PER_HOUR = 48;
 const DEFAULT_GRANULARITY = 15; // 15-minute granularity
-
-// Calculate column layout for overlapping blocks
-interface BlockLayout {
-  block: TimeBlockData;
-  column: number;
-  totalColumns: number;
-}
-
-function calculateBlockLayouts(blocks: TimeBlockData[]): BlockLayout[] {
-  if (blocks.length === 0) return [];
-
-  const sorted = [...blocks].sort((a, b) => {
-    const aStart = a.timeRange.startHour * 60 + a.timeRange.startMinute;
-    const bStart = b.timeRange.startHour * 60 + b.timeRange.startMinute;
-    if (aStart !== bStart) return aStart - bStart;
-    const aEnd = a.timeRange.endHour * 60 + a.timeRange.endMinute;
-    const bEnd = b.timeRange.endHour * 60 + b.timeRange.endMinute;
-    return bEnd - aEnd;
-  });
-
-  const columns: number[] = [];
-  const layouts: Map<string, { column: number }> = new Map();
-
-  for (const block of sorted) {
-    const start = block.timeRange.startHour * 60 + block.timeRange.startMinute;
-    const end = block.timeRange.endHour * 60 + block.timeRange.endMinute;
-
-    let column = -1;
-    for (let i = 0; i < columns.length; i++) {
-      if (columns[i] <= start) {
-        column = i;
-        break;
-      }
-    }
-
-    if (column === -1) {
-      column = columns.length;
-      columns.push(end);
-    } else {
-      columns[column] = end;
-    }
-
-    layouts.set(block.uid, { column });
-  }
-
-  const result: BlockLayout[] = [];
-
-  for (const block of sorted) {
-    const layout = layouts.get(block.uid)!;
-    const start = block.timeRange.startHour * 60 + block.timeRange.startMinute;
-    const end = block.timeRange.endHour * 60 + block.timeRange.endMinute;
-
-    let maxColumn = layout.column;
-    for (const other of sorted) {
-      if (other.uid === block.uid) continue;
-      const otherStart = other.timeRange.startHour * 60 + other.timeRange.startMinute;
-      const otherEnd = other.timeRange.endHour * 60 + other.timeRange.endMinute;
-
-      if (start < otherEnd && end > otherStart) {
-        const otherLayout = layouts.get(other.uid)!;
-        maxColumn = Math.max(maxColumn, otherLayout.column);
-      }
-    }
-
-    result.push({
-      block,
-      column: layout.column,
-      totalColumns: maxColumn + 1,
-    });
-  }
-
-  return result;
-}
 
 function formatHourLabel(hour: number): { displayTime: string; actualTime: string | null } {
   const pad = (n: number) => n.toString().padStart(2, "0");

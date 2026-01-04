@@ -4,6 +4,7 @@
 import React, { useMemo, useCallback } from "react";
 import type { TimeBlockData } from "../types";
 import { formatTime } from "../core/timeParser";
+import { calculateBlockLayouts, BlockLayout } from "../core/layoutCalculator";
 
 interface WeekGridProps {
   startHour: number;
@@ -32,79 +33,6 @@ function formatDayHeader(date: Date, weekStartDay: 0 | 1): { dayName: string; da
   const dayName = weekStartDay === 1 ? DAY_NAMES_MON_START[dayOfWeek === 0 ? 6 : dayOfWeek - 1] : DAY_NAMES_SHORT[dayOfWeek];
   const dayNum = date.getDate().toString();
   return { dayName, dayNum };
-}
-
-// Calculate column layout for overlapping blocks within a day
-interface BlockLayout {
-  block: TimeBlockData;
-  column: number;
-  totalColumns: number;
-}
-
-function calculateBlockLayouts(blocks: TimeBlockData[]): BlockLayout[] {
-  if (blocks.length === 0) return [];
-
-  const sorted = [...blocks].sort((a, b) => {
-    const aStart = a.timeRange.startHour * 60 + a.timeRange.startMinute;
-    const bStart = b.timeRange.startHour * 60 + b.timeRange.startMinute;
-    if (aStart !== bStart) return aStart - bStart;
-    const aEnd = a.timeRange.endHour * 60 + a.timeRange.endMinute;
-    const bEnd = b.timeRange.endHour * 60 + b.timeRange.endMinute;
-    return bEnd - aEnd;
-  });
-
-  const columns: number[] = [];
-  const layouts: Map<string, { column: number }> = new Map();
-
-  for (const block of sorted) {
-    const start = block.timeRange.startHour * 60 + block.timeRange.startMinute;
-    const end = block.timeRange.endHour * 60 + block.timeRange.endMinute;
-
-    let column = -1;
-    for (let i = 0; i < columns.length; i++) {
-      if (columns[i] <= start) {
-        column = i;
-        break;
-      }
-    }
-
-    if (column === -1) {
-      column = columns.length;
-      columns.push(end);
-    } else {
-      columns[column] = end;
-    }
-
-    layouts.set(block.uid, { column });
-  }
-
-  const result: BlockLayout[] = [];
-
-  for (const block of sorted) {
-    const layout = layouts.get(block.uid)!;
-    const start = block.timeRange.startHour * 60 + block.timeRange.startMinute;
-    const end = block.timeRange.endHour * 60 + block.timeRange.endMinute;
-
-    let maxColumn = layout.column;
-    for (const other of sorted) {
-      if (other.uid === block.uid) continue;
-      const otherStart = other.timeRange.startHour * 60 + other.timeRange.startMinute;
-      const otherEnd = other.timeRange.endHour * 60 + other.timeRange.endMinute;
-
-      if (start < otherEnd && end > otherStart) {
-        const otherLayout = layouts.get(other.uid)!;
-        maxColumn = Math.max(maxColumn, otherLayout.column);
-      }
-    }
-
-    result.push({
-      block,
-      column: layout.column,
-      totalColumns: maxColumn + 1,
-    });
-  }
-
-  return result;
 }
 
 // Check if a date is today

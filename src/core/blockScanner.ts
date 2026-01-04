@@ -1,7 +1,7 @@
 import type { TimeBlockData, TagConfig } from "../types";
 import { parseTimeRange } from "./timeParser";
-import { findAssociatedTag } from "./tagResolver";
-import { getBlockWithParent, getPageTitleForDate } from "../api/roamQueries";
+import { createBatchTagResolver } from "./tagResolver";
+import { getBlockHierarchyData, getPageTitleForDate } from "../api/roamQueries";
 
 export function scanPageForTimeBlocks(
   pageTitle: string,
@@ -9,8 +9,12 @@ export function scanPageForTimeBlocks(
   isNextDay: boolean = false,
   dayBoundaryHour: number = 5
 ): TimeBlockData[] {
-  const blocks = getBlockWithParent(pageTitle);
+  // Batch fetch all blocks and hierarchy data in one go
+  const { blocks, contentMap, parentMap } = getBlockHierarchyData(pageTitle);
   const timeBlocks: TimeBlockData[] = [];
+
+  // Create batch resolver with pre-fetched data
+  const resolveTag = createBatchTagResolver(configuredTags, contentMap, parentMap);
 
   for (const block of blocks) {
     const timeRange = parseTimeRange(block.string);
@@ -21,8 +25,8 @@ export function scanPageForTimeBlocks(
         continue;
       }
 
-      // Only process blocks that have time ranges
-      const tag = findAssociatedTag(block.uid, configuredTags);
+      // Use batch resolver - no API calls, just map lookups
+      const tag = resolveTag(block.uid);
 
       // Only include if a matching tag was found (or if no tags are configured)
       if (tag || configuredTags.length === 0) {
